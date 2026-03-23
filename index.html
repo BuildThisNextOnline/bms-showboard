@@ -658,6 +658,15 @@ function showLoadedBar(name, data) {
     : "";
   document.getElementById("loaded-name").textContent = "✓ " + name + windowStr + fetchedStr;
   document.getElementById("loaded-bar").classList.remove("hidden");
+
+  // Sync masthead to digest window dates, not today
+  if (w.from && w.to) {
+    const dateLabel = new Date().toLocaleDateString("en-IN", {
+      weekday:"long", year:"numeric", month:"long", day:"numeric"
+    });
+    document.getElementById("edition-date").textContent =
+      dateLabel + " · Week " + w.from + " → " + w.to + " · Powered by Claude";
+  }
 }
 
 function showError(msg) {
