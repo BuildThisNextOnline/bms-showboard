@@ -994,10 +994,9 @@ function renderEvents() {
     ? zoneFiltered
     : zoneFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
 
-  // Rebuild area toggles based on category-filtered events
-  rebuildAreaCounts(catFiltered);
-  // Rebuild category counts based on area-filtered events
-  rebuildCatCounts(zoneFiltered);
+  // Both rebuilds use fully filtered events so counts reflect complete intersection
+  rebuildAreaCounts(events);
+  rebuildCatCounts(events);
 
   if (events.length === 0) {
     const p = document.createElement("p");
