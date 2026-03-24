@@ -516,6 +516,8 @@ function renderResults(data) {
 
   // Area toggles
   renderAreaToggles(data.categories || []);
+  // Store groupCats for dynamic area rebuilds
+  window._bmsGroupCats = window._bmsGroupCats || {};
 
   // Events
   renderEvents();
@@ -542,6 +544,7 @@ function renderCatToggles(categories) {
     groupCats[grp].push(cat);
   });
 
+  window._bmsGroupCats = groupCats;
   const groupGrid = document.getElementById("cat-group-grid");
   groupGrid.innerHTML = "";
   document.getElementById("cat-detail-row").innerHTML = "";
@@ -657,10 +660,11 @@ function renderAreaToggles(categories) {
   const allEvents = categories.flatMap(c => c.events || []);
   const zoneCounts = {};
   const zoneAreas = {};
+  let unknownCount = 0;
   allEvents.forEach(ev => {
     const zone = ev.area_zone;
     const area = ev.area;
-    if (!zone || !area) return;
+    if (!zone || !area) { unknownCount++; return; }
     zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
     if (!zoneAreas[zone]) zoneAreas[zone] = {};
     zoneAreas[zone][area] = (zoneAreas[zone][area] || 0) + 1;
@@ -688,7 +692,8 @@ function renderAreaToggles(categories) {
   });
   zoneGrid.appendChild(allBtn);
 
-  ["Central", "South", "North", "East", "West", "Other"].forEach(zone => {
+  if (unknownCount > 0) { zoneCounts["Unknown"] = unknownCount; zoneAreas["Unknown"] = { "No area data": unknownCount }; }
+  ["Central", "South", "North", "East", "West", "Other", "Unknown"].forEach(zone => {
     if (!zoneCounts[zone]) return;
     const btn = makeAreaToggle(zone, zone + " (" + zoneCounts[zone] + ")", false);
     btn.addEventListener("click", () => {
@@ -707,6 +712,69 @@ function renderAreaToggles(categories) {
     });
     zoneGrid.appendChild(btn);
   });
+}
+
+function rebuildAreaCounts(filteredEvents) {
+  // Recompute zone/area counts from currently visible events
+  const zoneCounts = {};
+  const zoneAreas = {};
+  let unknownCount = 0;
+  filteredEvents.forEach(ev => {
+    const zone = ev.area_zone;
+    const area = ev.area;
+    if (!zone || !area) { unknownCount++; return; }
+    zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
+    if (!zoneAreas[zone]) zoneAreas[zone] = {};
+    zoneAreas[zone][area] = (zoneAreas[zone][area] || 0) + 1;
+  });
+  if (unknownCount > 0) {
+    zoneCounts["Unknown"] = unknownCount;
+    zoneAreas["Unknown"] = { "No area data": unknownCount };
+  }
+  window._bmsZoneCounts = zoneCounts;
+  window._bmsZoneAreas  = zoneAreas;
+
+  // Update zone button labels with new counts
+  const zoneGrid = document.getElementById("area-zone-grid");
+  if (!zoneGrid) return;
+  zoneGrid.querySelectorAll(".cat-toggle").forEach(btn => {
+    const name = btn.dataset.name;
+    if (name === "__all__") {
+      const total = filteredEvents.filter(e => e.area || !e.area_zone).length;
+      btn.textContent = "\u2299 All Areas (" + filteredEvents.length + ")";
+    } else if (zoneCounts[name] !== undefined) {
+      btn.textContent = name + " (" + zoneCounts[name] + ")";
+      btn.style.display = "";
+    } else {
+      // Zone has no events under current filter — hide it
+      btn.style.display = "none";
+    }
+  });
+  // Add Unknown button if needed and not already there
+  let unknownBtn = zoneGrid.querySelector('[data-name="Unknown"]');
+  if (unknownCount > 0 && !unknownBtn) {
+    unknownBtn = makeAreaToggle("Unknown", "Unknown (" + unknownCount + ")", false);
+    unknownBtn.addEventListener("click", () => {
+      if (activeAreaZones.has("__all__")) activeAreaZones = new Set();
+      if (activeAreaZones.has("Unknown")) {
+        activeAreaZones.delete("Unknown");
+        if (activeAreaZones.size === 0) activeAreaZones = new Set(["__all__"]);
+      } else {
+        activeAreaZones.add("Unknown");
+      }
+      activeAreas = new Set(["__all__"]);
+      rebuildLevel2Areas(window._bmsZoneAreas, activeAreaZones);
+      zoneGrid.querySelectorAll(".cat-toggle").forEach(b =>
+        applyToggleStyle(b, activeAreaZones.has(b.dataset.name) || (b.dataset.name === "__all__" && activeAreaZones.has("__all__")), "#9a8060"));
+      renderEvents();
+    });
+    zoneGrid.appendChild(unknownBtn);
+  } else if (unknownCount > 0 && unknownBtn) {
+    unknownBtn.textContent = "Unknown (" + unknownCount + ")";
+    unknownBtn.style.display = "";
+  } else if (unknownCount === 0 && unknownBtn) {
+    unknownBtn.style.display = "none";
+  }
 }
 
 function rebuildLevel2Areas(zoneAreas, activeAreaZones) {
@@ -833,15 +901,21 @@ function renderEvents() {
     ? allFiltered
     : allFiltered.filter(ev => activeCats.has(ev._cat));
 
-  // Filter by area zone
+  // Filter by area zone (Unknown = events with no area data)
   const zoneFiltered = activeAreaZones.has("__all__")
     ? catFiltered
-    : catFiltered.filter(ev => ev.area_zone && activeAreaZones.has(ev.area_zone));
+    : catFiltered.filter(ev => {
+        if (activeAreaZones.has("Unknown") && (!ev.area_zone || !ev.area)) return true;
+        return ev.area_zone && activeAreaZones.has(ev.area_zone);
+      });
 
   // Filter by specific area
   const events = activeAreas.has("__all__")
     ? zoneFiltered
     : zoneFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
+
+  // Rebuild area toggles based on currently filtered category events
+  rebuildAreaCounts(catFiltered);
 
   if (events.length === 0) {
     const p = document.createElement("p");
