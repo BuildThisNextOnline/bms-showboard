@@ -967,8 +967,16 @@ function renderEvents() {
 
   // Fully filtered: apply all filters, used for event cards display
   const events = l1Filtered.filter(ev => {
+    // L2 category: OR within selected cats
     if (!activeCats.has("__all__") && !activeCats.has(ev._cat)) return false;
-    if (!activeAreas.has("__all__") && !(ev.area && activeAreas.has(ev.area))) return false;
+    // L2 area: OR within selected areas
+    // "No area data" is stored as activeAreas containing area names,
+    // but Unknown zone events have no area — handle via activeAreaZones
+    if (!activeAreas.has("__all__")) {
+      const hasArea = ev.area && activeAreas.has(ev.area);
+      const isUnknownSelected = activeAreaZones.has("Unknown") && (!ev.area_zone || !ev.area);
+      if (!hasArea && !isUnknownSelected) return false;
+    }
     return true;
   });
 
