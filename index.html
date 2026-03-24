@@ -157,6 +157,16 @@
   .stat-val-sm { font-size: 14px; color: #b45309; font-weight: bold; padding-top: 4px; }
   .stat-label { font-size: 11px; color: #6b5a3a; letter-spacing: 2px; text-transform: uppercase; }
 
+  /* ── Filter labels ── */
+  .filter-label {
+    font-size: 11px; color: #9a8060; text-transform: uppercase;
+    letter-spacing: .1em; margin: 16px 0 6px;
+  }
+  .filter-label-sub {
+    font-size: 10px; color: #6b5a3a; text-transform: uppercase;
+    letter-spacing: .08em; margin: 10px 0 5px;
+  }
+
   /* ── Category toggles ── */
   .cat-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .cat-toggle {
@@ -328,13 +338,24 @@
       </div>
     </div>
 
-    <!-- Category toggles -->
-    <div class="cat-grid" id="cat-grid"></div>
+    <!-- Category filters: Level 1 groups + Level 2 labels -->
+    <div id="cat-filter-section">
+      <div class="filter-label">Event Type</div>
+      <div class="cat-grid" id="cat-group-grid"></div>
+      <div id="cat-detail-row" class="hidden">
+        <div class="filter-label-sub">Filter within group</div>
+        <div class="cat-grid" id="cat-grid"></div>
+      </div>
+    </div>
 
-    <!-- Area toggles -->
-    <div id="area-filter-row" class="hidden">
-      <div style="font-size:11px;color:#6b5a3a;text-transform:uppercase;letter-spacing:.1em;margin:16px 0 6px;">Filter by area</div>
-      <div class="cat-grid" id="area-grid"></div>
+    <!-- Area filters: Zone + Neighbourhood -->
+    <div id="area-filter-section" class="hidden">
+      <div class="filter-label" style="margin-top:16px;">Area</div>
+      <div class="cat-grid" id="area-zone-grid"></div>
+      <div id="area-detail-row" class="hidden">
+        <div class="filter-label-sub">Filter within zone</div>
+        <div class="cat-grid" id="area-grid"></div>
+      </div>
     </div>
 
     <!-- Events grid -->
@@ -374,7 +395,9 @@ const COLORS = {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentData = null;
+let activeCatGroup = "__all__";
 let activeCats = new Set(["__all__"]);
+let activeAreaZone = "__all__";
 let activeAreas = new Set(["__all__"]);
 let tickerInterval = null;
 
@@ -509,29 +532,110 @@ function renderResults(data) {
 }
 
 function renderCatToggles(categories) {
-  const grid = document.getElementById("cat-grid");
-  grid.innerHTML = "";
-
-  const totalAll = categories.reduce((n, c) => n + (c.events || []).length, 0);
-  grid.appendChild(makeToggle("__all__", "◈ All (" + totalAll + ")", "#e8dcc8", true));
-
+  // Build group → events count map
+  const groupCounts = {};
+  const groupCats = {};
   categories.forEach(cat => {
-    const color = COLORS[cat.name] || "#9a8060";
-    const icon  = ICONS[cat.name]  || "◇";
-    grid.appendChild(makeToggle(cat.name, icon + " " + cat.name + " (" + (cat.events||[]).length + ")", color, false));
+    const grp = (cat.events||[])[0]?.category_group || "Other";
+    groupCounts[grp] = (groupCounts[grp] || 0) + (cat.events||[]).length;
+    if (!groupCats[grp]) groupCats[grp] = [];
+    groupCats[grp].push(cat);
+  });
+
+  // Level 1: group grid
+  const groupGrid = document.getElementById("cat-group-grid");
+  groupGrid.innerHTML = "";
+  const totalAll = categories.reduce((n, c) => n + (c.events||[]).length, 0);
+  const allBtn = makeToggle("__all__", "◈ All (" + totalAll + ")", "#e8dcc8", true);
+  allBtn.addEventListener("click", () => {
+    activeCatGroup = "__all__";
+    activeCats = new Set(["__all__"]);
+    document.getElementById("cat-detail-row").classList.add("hidden");
+    document.querySelectorAll("#cat-group-grid .cat-toggle").forEach(b =>
+      applyToggleStyle(b, b.dataset.name === "__all__", b.dataset.color));
+    renderEvents();
+  });
+  groupGrid.appendChild(allBtn);
+
+  Object.entries(groupCounts).sort().forEach(([grp, count]) => {
+    const btn = makeToggle(grp, grp + " (" + count + ")", "#c8a870", activeCatGroup === grp);
+    btn.addEventListener("click", () => {
+      activeCatGroup = grp;
+      activeCats = new Set(["__all__"]);
+      // Populate Level 2
+      const detailGrid = document.getElementById("cat-grid");
+      detailGrid.innerHTML = "";
+      const grpCats = groupCats[grp] || [];
+      const grpTotal = grpCats.reduce((n, c) => n + (c.events||[]).length, 0);
+      detailGrid.appendChild(makeToggle("__all__", "◈ All " + grp + " (" + grpTotal + ")", "#e8dcc8", true));
+      grpCats.forEach(cat => {
+        const color = COLORS[cat.name] || "#9a8060";
+        const icon  = ICONS[cat.name]  || "◇";
+        const b = makeToggle(cat.name, icon + " " + cat.name + " (" + (cat.events||[]).length + ")", color, false);
+        detailGrid.appendChild(b);
+      });
+      document.getElementById("cat-detail-row").classList.remove("hidden");
+      document.querySelectorAll("#cat-group-grid .cat-toggle").forEach(b =>
+        applyToggleStyle(b, b.dataset.name === grp, b.dataset.color));
+      renderEvents();
+    });
+    groupGrid.appendChild(btn);
   });
 }
 
 function renderAreaToggles(categories) {
   const allEvents = categories.flatMap(c => c.events || []);
-  const areas = [...new Set(allEvents.map(e => e.area).filter(Boolean))].sort();
-  const row = document.getElementById("area-filter-row");
-  const grid = document.getElementById("area-grid");
-  grid.innerHTML = "";
-  if (areas.length === 0) { row.classList.add("hidden"); return; }
-  row.classList.remove("hidden");
-  grid.appendChild(makeAreaToggle("__all__", "⊙ All Areas", true));
-  areas.forEach(area => grid.appendChild(makeAreaToggle(area, "⌖ " + area, false)));
+  const zoneCounts = {};
+  const zoneAreas = {};
+  allEvents.forEach(ev => {
+    const zone = ev.area_zone;
+    const area = ev.area;
+    if (!zone || !area) return;
+    zoneCounts[zone] = (zoneCounts[zone] || 0) + 1;
+    if (!zoneAreas[zone]) zoneAreas[zone] = {};
+    zoneAreas[zone][area] = (zoneAreas[zone][area] || 0) + 1;
+  });
+
+  const section = document.getElementById("area-filter-section");
+  const zoneGrid = document.getElementById("area-zone-grid");
+  zoneGrid.innerHTML = "";
+  if (Object.keys(zoneCounts).length === 0) { section.classList.add("hidden"); return; }
+  section.classList.remove("hidden");
+
+  const totalAreas = allEvents.filter(e => e.area).length;
+  const allBtn = makeAreaToggle("__all__", "⊙ All Areas (" + totalAreas + ")", true);
+  allBtn.addEventListener("click", () => {
+    activeAreaZone = "__all__";
+    activeAreas = new Set(["__all__"]);
+    document.getElementById("area-detail-row").classList.add("hidden");
+    document.querySelectorAll("#area-zone-grid .cat-toggle").forEach(b =>
+      applyToggleStyle(b, b.dataset.name === "__all__", "#9a8060"));
+    renderEvents();
+  });
+  zoneGrid.appendChild(allBtn);
+
+  ["Central", "South", "North", "East", "West", "Other"].forEach(zone => {
+    if (!zoneCounts[zone]) return;
+    const btn = makeAreaToggle(zone, zone + " (" + zoneCounts[zone] + ")", activeAreaZone === zone);
+    btn.addEventListener("click", () => {
+      activeAreaZone = zone;
+      activeAreas = new Set(["__all__"]);
+      // Populate Level 2
+      const detailGrid = document.getElementById("area-grid");
+      detailGrid.innerHTML = "";
+      const areas = Object.entries(zoneAreas[zone] || {}).sort((a,b) => a[0].localeCompare(b[0]));
+      const zoneTotal = zoneCounts[zone];
+      detailGrid.appendChild(makeAreaToggle("__all__", "⊙ All " + zone + " (" + zoneTotal + ")", true));
+      areas.forEach(([area, count]) => {
+        detailGrid.appendChild(makeAreaToggle(area, "⌖ " + area + " (" + count + ")", false));
+      });
+      document.getElementById("area-detail-row").classList.remove("hidden");
+      document.querySelectorAll("#area-zone-grid .cat-toggle").forEach(b =>
+        applyToggleStyle(b, b.dataset.name === zone, "#9a8060"));
+      renderEvents();
+    });
+    zoneGrid.appendChild(btn);
+  });
 }
 
 function makeAreaToggle(name, label, isActive) {
@@ -609,10 +713,26 @@ function renderEvents() {
     ? currentData.categories
     : currentData.categories.filter(c => activeCats.has(c.name));
 
-  const allFiltered = (cats || []).flatMap(c => (c.events || []).map(ev => ({...ev, _cat: c.name})));
-  const events = activeAreas.has("__all__")
+  // Filter by category group first
+  const groupFiltered = activeCatGroup === "__all__"
+    ? (cats || [])
+    : (cats || []).filter(c => (c.events||[])[0]?.category_group === activeCatGroup);
+
+  const allFiltered = groupFiltered.flatMap(c => (c.events || []).map(ev => ({...ev, _cat: c.name})));
+
+  // Filter by specific category within group
+  const catFiltered = activeCats.has("__all__")
     ? allFiltered
-    : allFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
+    : allFiltered.filter(ev => activeCats.has(ev._cat));
+
+  // Filter by area zone then specific area
+  const zoneFiltered = activeAreaZone === "__all__"
+    ? catFiltered
+    : catFiltered.filter(ev => ev.area_zone === activeAreaZone);
+
+  const events = activeAreas.has("__all__")
+    ? zoneFiltered
+    : zoneFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
 
   if (events.length === 0) {
     const p = document.createElement("p");
