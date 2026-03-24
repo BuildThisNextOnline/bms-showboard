@@ -714,51 +714,55 @@ function renderAreaToggles(categories) {
   });
 }
 
-function rebuildCatCounts(filteredEvents) {
+function rebuildAllCounts(filteredEvents) {
+  // Single source of truth — recompute ALL counts from the filtered event set
+  const total = filteredEvents.length;
+
+  // --- Category counts ---
   const catCounts = {};
   filteredEvents.forEach(ev => {
     const cat = ev._cat || ev.category;
     if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
   });
-  const total = filteredEvents.length;
 
+  // Update stats bar
   document.getElementById("stat-events").textContent = total;
   document.getElementById("stat-cats").textContent = Object.keys(catCounts).length;
 
+  // Update Event Type L1 group buttons
   const groupGrid = document.getElementById("cat-group-grid");
-  if (!groupGrid) return;
-  const allBtn = groupGrid.querySelector('[data-name="__all__"]');
-  if (allBtn) allBtn.textContent = "\u25C8 All (" + total + ")";
-
-  groupGrid.querySelectorAll(".cat-toggle").forEach(btn => {
-    const grp = btn.dataset.name;
-    if (grp === "__all__") return;
-    const grpCats = (window._bmsGroupCats?.[grp] || []).map(c => c.name);
-    const count = grpCats.reduce((n, cat) => n + (catCounts[cat] || 0), 0);
-    btn.style.opacity = count === 0 ? "0.4" : "1";
-    btn.textContent = grp + " (" + count + ")";
-  });
-
-  const detailRow = document.getElementById("cat-detail-row");
-  if (!detailRow || detailRow.classList.contains("hidden")) return;
-  detailRow.querySelectorAll(".cat-toggle").forEach(btn => {
-    const name = btn.dataset.name;
-    if (name.startsWith("__all__:")) {
-      // Update the "All <group>" button with sum of its member counts
-      const grp = name.replace("__all__:", "");
+  if (groupGrid) {
+    const allBtn = groupGrid.querySelector('[data-name="__all__"]');
+    if (allBtn) allBtn.textContent = "\u25C8 All (" + total + ")";
+    groupGrid.querySelectorAll(".cat-toggle").forEach(btn => {
+      const grp = btn.dataset.name;
+      if (grp === "__all__") return;
       const grpCats = (window._bmsGroupCats?.[grp] || []).map(c => c.name);
-      const grpCount = grpCats.reduce((n, cat) => n + (catCounts[cat] || 0), 0);
-      btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + grpCount + ")";
-      return;
-    }
-    const count = catCounts[name] || 0;
-    btn.style.opacity = count === 0 ? "0.4" : "1";
-    btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + count + ")";
-  });
-}
+      const count = grpCats.reduce((n, cat) => n + (catCounts[cat] || 0), 0);
+      btn.style.opacity = count === 0 ? "0.4" : "1";
+      btn.textContent = grp + " (" + count + ")";
+    });
+  }
 
-function rebuildAreaCounts(filteredEvents) {
-  // Recompute zone/area counts from currently visible events
+  // Update Event Type L2 buttons in-place
+  const catDetailRow = document.getElementById("cat-detail-row");
+  if (catDetailRow && !catDetailRow.classList.contains("hidden")) {
+    catDetailRow.querySelectorAll(".cat-toggle").forEach(btn => {
+      const name = btn.dataset.name;
+      if (name.startsWith("__all__:")) {
+        const grp = name.replace("__all__:", "");
+        const grpCats = (window._bmsGroupCats?.[grp] || []).map(c => c.name);
+        const count = grpCats.reduce((n, cat) => n + (catCounts[cat] || 0), 0);
+        btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + count + ")";
+        return;
+      }
+      const count = catCounts[name] || 0;
+      btn.style.opacity = count === 0 ? "0.4" : "1";
+      btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + count + ")";
+    });
+  }
+
+  // --- Area counts ---
   const zoneCounts = {};
   const zoneAreas = {};
   let unknownCount = 0;
@@ -777,72 +781,51 @@ function rebuildAreaCounts(filteredEvents) {
   window._bmsZoneCounts = zoneCounts;
   window._bmsZoneAreas  = zoneAreas;
 
-  // Update zone button labels with new counts
+  // Update Area L1 zone buttons
   const zoneGrid = document.getElementById("area-zone-grid");
-  if (!zoneGrid) return;
-  zoneGrid.querySelectorAll(".cat-toggle").forEach(btn => {
-    const name = btn.dataset.name;
-    if (name === "__all__") {
-      const total = filteredEvents.filter(e => e.area || !e.area_zone).length;
-      btn.textContent = "\u2299 All Areas (" + filteredEvents.length + ")";
-    } else if (zoneCounts[name] !== undefined) {
-      btn.textContent = name + " (" + zoneCounts[name] + ")";
-      btn.style.display = "";
-    } else {
-      // Zone has no events under current filter — hide it
-      btn.style.display = "none";
-    }
-  });
-  // Add Unknown button if needed and not already there
-  let unknownBtn = zoneGrid.querySelector('[data-name="Unknown"]');
-  if (unknownCount > 0 && !unknownBtn) {
-    unknownBtn = makeAreaToggle("Unknown", "Unknown (" + unknownCount + ")", false);
-    unknownBtn.addEventListener("click", () => {
-      if (activeAreaZones.has("__all__")) activeAreaZones = new Set();
-      if (activeAreaZones.has("Unknown")) {
-        activeAreaZones.delete("Unknown");
-        if (activeAreaZones.size === 0) activeAreaZones = new Set(["__all__"]);
+  if (zoneGrid) {
+    const areaAllBtn = zoneGrid.querySelector('[data-name="__all__"]');
+    if (areaAllBtn) areaAllBtn.textContent = "\u2299 All Areas (" + total + ")";
+    zoneGrid.querySelectorAll(".cat-toggle").forEach(btn => {
+      const name = btn.dataset.name;
+      if (name === "__all__") return;
+      const count = zoneCounts[name] || 0;
+      if (count === 0) {
+        btn.style.display = "none";
       } else {
-        activeAreaZones.add("Unknown");
+        btn.style.display = "";
+        btn.textContent = name + " (" + count + ")";
       }
-      activeAreas = new Set(["__all__"]);
-      rebuildLevel2Areas(window._bmsZoneAreas, activeAreaZones);
-      zoneGrid.querySelectorAll(".cat-toggle").forEach(b =>
-        applyToggleStyle(b, activeAreaZones.has(b.dataset.name) || (b.dataset.name === "__all__" && activeAreaZones.has("__all__")), "#9a8060"));
-      renderEvents();
     });
-    zoneGrid.appendChild(unknownBtn);
-  } else if (unknownCount > 0 && unknownBtn) {
-    unknownBtn.textContent = "Unknown (" + unknownCount + ")";
-    unknownBtn.style.display = "";
-  } else if (unknownCount === 0 && unknownBtn) {
-    unknownBtn.style.display = "none";
+    // Unknown button
+    let unknownBtn = zoneGrid.querySelector('[data-name="Unknown"]');
+    if (unknownCount > 0 && unknownBtn) {
+      unknownBtn.textContent = "Unknown (" + unknownCount + ")";
+      unknownBtn.style.display = "";
+    } else if (unknownCount === 0 && unknownBtn) {
+      unknownBtn.style.display = "none";
+    }
   }
 
-  // Update L2 area button counts in-place without rebuilding
-  // (rebuilding would reset active state)
-  if (!activeAreaZones.has("__all__") && activeAreaZones.size > 0) {
-    const detailRow = document.getElementById("area-detail-row");
-    detailRow.querySelectorAll(".cat-toggle").forEach(btn => {
+  // Update Area L2 buttons in-place
+  const areaDetailRow = document.getElementById("area-detail-row");
+  if (areaDetailRow && !areaDetailRow.classList.contains("hidden")) {
+    areaDetailRow.querySelectorAll(".cat-toggle").forEach(btn => {
       const name = btn.dataset.name;
       if (name.startsWith("__all__:")) {
-        // Update the "All <zone>" button
         const zone = name.replace("__all__:", "");
-        const zoneTotal = Object.values(window._bmsZoneAreas?.[zone] || {}).reduce((n,c) => n+c, 0);
+        const zoneTotal = Object.values(zoneAreas[zone] || {}).reduce((n,c) => n+c, 0);
         btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + zoneTotal + ")";
         return;
       }
       const zone = btn.dataset.zone;
-      const newCount = (window._bmsZoneAreas?.[zone]?.[name]) || 0;
-      if (newCount === 0) {
-        btn.style.opacity = "0.4";
-      } else {
-        btn.style.opacity = "1";
-        btn.textContent = "\u234b " + name + " (" + newCount + ")";
-      }
+      const count = (zoneAreas[zone]?.[name]) || 0;
+      btn.style.opacity = count === 0 ? "0.4" : "1";
+      btn.textContent = "\u234b " + name + " (" + count + ")";
     });
   }
 }
+
 
 function rebuildLevel2Areas(zoneAreas, activeAreaZones) {
   const detailRow = document.getElementById("area-detail-row");
@@ -966,37 +949,28 @@ function renderEvents() {
 
   if (!currentData) return;
 
-  // Filter by active groups first
-  const groupFiltered = activeGroups.has("__all__")
-    ? currentData.categories
-    : currentData.categories.filter(c => {
-        const grp = (c.events||[])[0]?.category_group || "Other";
-        return activeGroups.has(grp);
-      });
+  // Build the fully filtered event set — single source of truth for all counts
+  const allEventsFlat = currentData.categories.flatMap(c =>
+    (c.events || []).map(ev => ({...ev, _cat: c.name}))
+  );
 
-  const allFiltered = groupFiltered.flatMap(c => (c.events || []).map(ev => ({...ev, _cat: c.name})));
+  const events = allEventsFlat.filter(ev => {
+    if (!activeGroups.has("__all__")) {
+      const grp = ev.category_group || "Other";
+      if (!activeGroups.has(grp)) return false;
+    }
+    if (!activeCats.has("__all__") && !activeCats.has(ev._cat)) return false;
+    if (!activeAreaZones.has("__all__")) {
+      const inUnknown = activeAreaZones.has("Unknown") && (!ev.area_zone || !ev.area);
+      const inZone = ev.area_zone && activeAreaZones.has(ev.area_zone);
+      if (!inUnknown && !inZone) return false;
+    }
+    if (!activeAreas.has("__all__") && !(ev.area && activeAreas.has(ev.area))) return false;
+    return true;
+  });
 
-  // Filter by specific category
-  const catFiltered = activeCats.has("__all__")
-    ? allFiltered
-    : allFiltered.filter(ev => activeCats.has(ev._cat));
+  rebuildAllCounts(events);
 
-  // Filter by area zone (Unknown = events with no area data)
-  const zoneFiltered = activeAreaZones.has("__all__")
-    ? catFiltered
-    : catFiltered.filter(ev => {
-        if (activeAreaZones.has("Unknown") && (!ev.area_zone || !ev.area)) return true;
-        return ev.area_zone && activeAreaZones.has(ev.area_zone);
-      });
-
-  // Filter by specific area
-  const events = activeAreas.has("__all__")
-    ? zoneFiltered
-    : zoneFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
-
-  // Both rebuilds use fully filtered events so counts reflect complete intersection
-  rebuildAreaCounts(events);
-  rebuildCatCounts(events);
 
   if (events.length === 0) {
     const p = document.createElement("p");
@@ -1074,6 +1048,59 @@ function renderEvents() {
   });
 
   container.appendChild(grid);
+}
+
+// ── Ticker ────────────────────────────────────────────────────────────────────
+function startTicker(el) {
+  if (tickerInterval) clearInterval(tickerInterval);
+  let pos = 0;
+  tickerInterval = setInterval(() => {
+    pos = (pos + 1) % 2400;
+    el.style.transform = "translateX(-" + pos + "px)";
+  }, 30);
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function showLoadedBar(name, data) {
+  const w = data.window || {};
+  const windowStr = w.from && w.to ? " · " + w.from + " → " + w.to : "";
+  const fetchedStr = data.fetched_at && data.fetched_at !== "unknown"
+    ? " · scraped " + new Date(data.fetched_at).toLocaleString("en-IN", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"})
+    : "";
+  document.getElementById("loaded-name").textContent = "✓ " + name + windowStr + fetchedStr;
+  document.getElementById("loaded-bar").classList.remove("hidden");
+
+  // Sync masthead to digest window dates, not today
+  if (w.from && w.to) {
+    const dateLabel = new Date().toLocaleDateString("en-IN", {
+      weekday:"long", year:"numeric", month:"long", day:"numeric"
+    });
+    document.getElementById("edition-date").textContent =
+      dateLabel + " · Week " + w.from + " → " + w.to + " · Powered by Claude";
+  }
+}
+
+function showError(msg) {
+  const box = document.getElementById("error-box");
+  box.textContent = "⚠ " + msg;
+  box.classList.remove("hidden");
+}
+function hideError() {
+  document.getElementById("error-box").classList.add("hidden");
+}
+
+function reset() {
+  currentData = null;
+  activeCats  = new Set(["__all__"]);
+  if (tickerInterval) clearInterval(tickerInterval);
+
+  document.getElementById("input-section").classList.remove("hidden");
+  document.getElementById("results").classList.add("hidden");
+  document.getElementById("loaded-bar").classList.add("hidden");
+  document.getElementById("ticker-bar").classList.add("hidden");
+  document.getElementById("paste-input").value = "";
+  document.getElementById("file-input").value  = "";
+  hideError();
 }
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
