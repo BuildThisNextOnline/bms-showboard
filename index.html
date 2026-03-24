@@ -715,56 +715,39 @@ function renderAreaToggles(categories) {
 }
 
 function rebuildCatCounts(filteredEvents) {
-  // Count events per category from currently area-filtered events
   const catCounts = {};
-  const groupCounts = {};
   filteredEvents.forEach(ev => {
     const cat = ev._cat || ev.category;
-    const grp = ev.category_group || "Other";
     if (cat) catCounts[cat] = (catCounts[cat] || 0) + 1;
-    if (grp) groupCounts[grp] = (groupCounts[grp] || 0) + 1;
   });
   const total = filteredEvents.length;
 
-  // Update All button
+  document.getElementById("stat-events").textContent = total;
+  document.getElementById("stat-cats").textContent = Object.keys(catCounts).length;
+
   const groupGrid = document.getElementById("cat-group-grid");
   if (!groupGrid) return;
   const allBtn = groupGrid.querySelector('[data-name="__all__"]');
   if (allBtn) allBtn.textContent = "\u25C8 All (" + total + ")";
 
-  // Update group buttons
   groupGrid.querySelectorAll(".cat-toggle").forEach(btn => {
-    const name = btn.dataset.name;
-    if (name === "__all__") return;
-    const count = groupCounts[name] || 0;
-    if (count === 0) {
-      btn.style.opacity = "0.4";
-    } else {
-      btn.style.opacity = "1";
-      btn.textContent = name + " (" + count + ")";
-    }
+    const grp = btn.dataset.name;
+    if (grp === "__all__") return;
+    const grpCats = (window._bmsGroupCats?.[grp] || []).map(c => c.name);
+    const count = grpCats.reduce((n, cat) => n + (catCounts[cat] || 0), 0);
+    btn.style.opacity = count === 0 ? "0.4" : "1";
+    btn.textContent = grp + " (" + count + ")";
   });
 
-  // Update L2 category buttons in-place
   const detailRow = document.getElementById("cat-detail-row");
-  if (!detailRow) return;
+  if (!detailRow || detailRow.classList.contains("hidden")) return;
   detailRow.querySelectorAll(".cat-toggle").forEach(btn => {
     const name = btn.dataset.name;
     if (name.startsWith("__all__")) return;
     const count = catCounts[name] || 0;
-    const icon = name.match(/^[◈◉♦◆▲●◐◍◎◌◑◒◇]/)?.[0] || "";
-    if (count === 0) {
-      btn.style.opacity = "0.4";
-    } else {
-      btn.style.opacity = "1";
-      btn.textContent = icon + (icon ? " " : "") + name + " (" + count + ")";
-    }
+    btn.style.opacity = count === 0 ? "0.4" : "1";
+    btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, "") + " (" + count + ")";
   });
-
-  // Update stats bar
-  const visibleCats = Object.keys(catCounts).length;
-  document.getElementById("stat-events").textContent = total;
-  document.getElementById("stat-cats").textContent = visibleCats;
 }
 
 function rebuildAreaCounts(filteredEvents) {
