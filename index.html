@@ -776,9 +776,23 @@ function rebuildAreaCounts(filteredEvents) {
     unknownBtn.style.display = "none";
   }
 
-  // If zones are selected, rebuild Level 2 with updated counts
+  // Update L2 area button counts in-place without rebuilding
+  // (rebuilding would reset active state)
   if (!activeAreaZones.has("__all__") && activeAreaZones.size > 0) {
-    rebuildLevel2Areas(window._bmsZoneAreas, activeAreaZones);
+    const detailRow = document.getElementById("area-detail-row");
+    detailRow.querySelectorAll(".cat-toggle").forEach(btn => {
+      const name = btn.dataset.name;
+      if (name.startsWith("__all__:")) return; // skip all-buttons
+      const zone = btn.dataset.zone;
+      const newCount = (window._bmsZoneAreas?.[zone]?.[name]) || 0;
+      if (newCount === 0) {
+        btn.style.opacity = "0.4";
+      } else {
+        btn.style.opacity = "1";
+        // Update count in label
+        btn.textContent = "\u234b " + name + " (" + newCount + ")";
+      }
+    });
   }
 }
 
