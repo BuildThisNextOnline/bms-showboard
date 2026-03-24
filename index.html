@@ -331,6 +331,12 @@
     <!-- Category toggles -->
     <div class="cat-grid" id="cat-grid"></div>
 
+    <!-- Area toggles -->
+    <div id="area-filter-row" class="hidden">
+      <div style="font-size:11px;color:#6b5a3a;text-transform:uppercase;letter-spacing:.1em;margin:16px 0 6px;">Filter by area</div>
+      <div class="cat-grid" id="area-grid"></div>
+    </div>
+
     <!-- Events grid -->
     <div id="events-container"></div>
 
@@ -369,6 +375,7 @@ const COLORS = {
 // ── State ─────────────────────────────────────────────────────────────────────
 let currentData = null;
 let activeCats = new Set(["__all__"]);
+let activeAreas = new Set(["__all__"]);
 let tickerInterval = null;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -484,6 +491,9 @@ function renderResults(data) {
   // Category toggles
   renderCatToggles(data.categories || []);
 
+  // Area toggles
+  renderAreaToggles(data.categories || []);
+
   // Events
   renderEvents();
 
@@ -510,6 +520,46 @@ function renderCatToggles(categories) {
     const icon  = ICONS[cat.name]  || "◇";
     grid.appendChild(makeToggle(cat.name, icon + " " + cat.name + " (" + (cat.events||[]).length + ")", color, false));
   });
+}
+
+function renderAreaToggles(categories) {
+  const allEvents = categories.flatMap(c => c.events || []);
+  const areas = [...new Set(allEvents.map(e => e.area).filter(Boolean))].sort();
+  const row = document.getElementById("area-filter-row");
+  const grid = document.getElementById("area-grid");
+  grid.innerHTML = "";
+  if (areas.length === 0) { row.classList.add("hidden"); return; }
+  row.classList.remove("hidden");
+  grid.appendChild(makeAreaToggle("__all__", "⊙ All Areas", true));
+  areas.forEach(area => grid.appendChild(makeAreaToggle(area, "⌖ " + area, false)));
+}
+
+function makeAreaToggle(name, label, isActive) {
+  const btn = document.createElement("button");
+  btn.className = "cat-toggle" + (isActive ? " active" : "");
+  btn.textContent = label;
+  btn.dataset.name = name;
+  btn.dataset.color = "#9a8060";
+  applyToggleStyle(btn, isActive, "#9a8060");
+  btn.addEventListener("click", () => {
+    toggleArea(name);
+    document.querySelectorAll("#area-grid .cat-toggle").forEach(b => {
+      applyToggleStyle(b, activeAreas.has(b.dataset.name), "#9a8060");
+    });
+    renderEvents();
+  });
+  return btn;
+}
+
+function toggleArea(name) {
+  if (name === "__all__") { activeAreas = new Set(["__all__"]); return; }
+  activeAreas.delete("__all__");
+  if (activeAreas.has(name)) {
+    activeAreas.delete(name);
+    if (activeAreas.size === 0) activeAreas = new Set(["__all__"]);
+  } else {
+    activeAreas.add(name);
+  }
 }
 
 function makeToggle(name, label, color, isActive) {
@@ -559,7 +609,10 @@ function renderEvents() {
     ? currentData.categories
     : currentData.categories.filter(c => activeCats.has(c.name));
 
-  const events = (cats || []).flatMap(c => (c.events || []).map(ev => ({...ev, _cat: c.name})));
+  const allFiltered = (cats || []).flatMap(c => (c.events || []).map(ev => ({...ev, _cat: c.name})));
+  const events = activeAreas.has("__all__")
+    ? allFiltered
+    : allFiltered.filter(ev => ev.area && activeAreas.has(ev.area));
 
   if (events.length === 0) {
     const p = document.createElement("p");
@@ -612,7 +665,7 @@ function renderEvents() {
 
     const meta = document.createElement("div");
     meta.className = "event-meta";
-    if (ev.venue)  meta.innerHTML += `<span style="color:#9a8060">📍 ${ev.venue}</span>`;
+    if (ev.venue)  meta.innerHTML += `<span style="color:#9a8060">📍 ${ev.venue}${ev.area ? " · " + ev.area : ""}</span>`;
     // Show timing if available, fall back to date_iso, show both if timing lacks the date
     const dateDisplay = ev.timing || (ev.date_iso ? ev.date_iso : null);
     if (dateDisplay) meta.innerHTML += `<span style="color:#6b8a6b">🕐 ${dateDisplay}</span>`;
