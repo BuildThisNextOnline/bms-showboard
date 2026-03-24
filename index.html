@@ -836,13 +836,7 @@ function makeAreaToggle(name, label, isActive) {
   btn.dataset.name = name;
   btn.dataset.color = "#9a8060";
   applyToggleStyle(btn, isActive, "#9a8060");
-  btn.addEventListener("click", () => {
-    toggleArea(name);
-    document.querySelectorAll("#area-grid .cat-toggle").forEach(b => {
-      applyToggleStyle(b, activeAreas.has(b.dataset.name), "#9a8060");
-    });
-    renderEvents();
-  });
+  // No generic click handler -- callers add their own specific handlers
   return btn;
 }
 
