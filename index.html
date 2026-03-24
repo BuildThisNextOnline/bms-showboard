@@ -571,12 +571,16 @@ function renderCatToggles(categories) {
       // Toggle this group
       if (activeGroups.has("__all__")) activeGroups = new Set();
       if (activeGroups.has(grp)) {
+        // Deselecting a group — remove its L2 selections
         activeGroups.delete(grp);
         if (activeGroups.size === 0) activeGroups = new Set(["__all__"]);
+        const grpCatNames = (groupCats[grp] || []).map(c => c.name);
+        grpCatNames.forEach(cat => activeCats.delete(cat));
+        if (activeCats.size === 0) activeCats = new Set(["__all__"]);
       } else {
+        // Adding a group — preserve existing L2 selections
         activeGroups.add(grp);
       }
-      activeCats = new Set(["__all__"]);
       rebuildLevel2Cats(groupCats, activeGroups);
       refreshGroupStyles(groupGrid);
       renderEvents();
@@ -618,7 +622,7 @@ function rebuildLevel2Cats(groupCats, activeGroups) {
     cats.forEach(cat => {
       const color = COLORS[cat.name] || "#9a8060";
       const icon  = ICONS[cat.name]  || "◇";
-      const btn = makeToggle(cat.name, icon + " " + cat.name + " (" + (cat.events||[]).length + ")", color, false);
+      const btn = makeToggle(cat.name, icon + " " + cat.name + " (" + (cat.events||[]).length + ")", color, activeCats.has(cat.name));
       btn.addEventListener("click", () => {
         activeCats.delete("__all__");
         activeCats.delete("__all__:" + grp);
