@@ -803,6 +803,9 @@ function rebuildLevel2Areas(zoneAreas, activeAreaZones) {
     const allBtn = makeAreaToggle("__all__:" + zone, "\u2299 All " + zone + " (" + zoneTotal + ")", true);
     const capturedZone = zone;
     allBtn.dataset.zone = zone;
+    const zoneAreaNames = areas.map(([a]) => a);
+    const anySelected = zoneAreaNames.some(a => activeAreas.has(a));
+    applyToggleStyle(allBtn, !anySelected, "#e8dcc8");
     allBtn.addEventListener("click", () => {
       const zAreas = Object.keys(window._bmsZoneAreas?.[capturedZone] || {});
       zAreas.forEach(a => activeAreas.delete(a));
@@ -815,7 +818,7 @@ function rebuildLevel2Areas(zoneAreas, activeAreaZones) {
     });
     subGrid.appendChild(allBtn);
     areas.forEach(([area, count]) => {
-      const btn = makeAreaToggle(area, "\u234b " + area + " (" + count + ")", false);
+      const btn = makeAreaToggle(area, "\u234b " + area + " (" + count + ")", activeAreas.has(area));
       btn.dataset.zone = zone;
       btn.addEventListener("click", () => {
         activeAreas.delete("__all__");
