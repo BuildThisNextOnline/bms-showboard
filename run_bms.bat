@@ -87,8 +87,7 @@ if not errorlevel 1 (
     git diff --cached --quiet
     if errorlevel 1 (
         git commit -m "digest: %DATE%"
-        git pull code main --no-rebase
-        git push code main
+        git push code main --force
         if errorlevel 1 (
             echo WARNING: Push to bms-showboard-code failed.
         ) else (
