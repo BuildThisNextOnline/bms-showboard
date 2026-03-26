@@ -250,6 +250,33 @@
     font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
   }
 
+  /* ── Favourites ── */
+  .fav-btn {
+    position: absolute; top: 10px; right: 10px;
+    background: transparent; border: none;
+    color: #3a3020; font-size: 18px;
+    cursor: pointer; line-height: 1;
+    transition: color 0.15s, transform 0.15s;
+    padding: 2px 4px;
+  }
+  .fav-btn:hover { color: #b45309; transform: scale(1.2); }
+  .fav-btn.active { color: #b45309; }
+  .event-card.in-demand .fav-btn { top: 32px; }
+
+  .fav-section-label {
+    font-size: 11px; color: #9a8060; text-transform: uppercase;
+    letter-spacing: .1em; margin: 20px 0 8px;
+    padding-bottom: 6px; border-bottom: 1px solid #2a2318;
+  }
+  .fav-past-card {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+  .fav-past-badge {
+    font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: #6b5a3a; margin-bottom: 4px;
+  }
+
   .hidden { display: none !important; }
 
   @media (max-width: 600px) {
@@ -338,6 +365,19 @@
       </div>
     </div>
 
+    <!-- Favourites toggle -->
+    <div style="margin-bottom:12px;">
+      <button class="cat-toggle" id="fav-toggle-btn" onclick="toggleFavView()"
+        style="border-color:#3a3020;color:#6b5a3a;">
+        ☆ Favourites (<span id="fav-count">0</span>)
+      </button>
+    </div>
+
+    <!-- Favourites view -->
+    <div id="fav-view" class="hidden">
+      <div id="fav-events-container"></div>
+    </div>
+
     <!-- Category filters: Level 1 groups + Level 2 labels -->
     <div id="cat-filter-section">
       <div class="filter-label">Event Type</div>
@@ -400,6 +440,7 @@ let activeCats = new Set(["__all__"]);
 let activeAreaZones = new Set(["__all__"]);
 let activeAreas = new Set(["__all__"]);
 let tickerInterval = null;
+let showingFavs = false;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (function init() {
@@ -513,6 +554,7 @@ function renderResults(data) {
 
   // Category toggles
   renderCatToggles(data.categories || []);
+  updateFavCount();
 
   // Area toggles
   renderAreaToggles(data.categories || []);
@@ -944,6 +986,208 @@ function toggleCat(name) {
   }
 }
 
+// ── Favourites ────────────────────────────────────────────────────────────────
+
+const FAV_KEY_PREFIX = "bms_fav_";
+
+function favKey(url) {
+  // Use URL directly as key, encoded to avoid special char issues
+  return FAV_KEY_PREFIX + encodeURIComponent(url);
+}
+
+function getFavourites() {
+  const favs = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(FAV_KEY_PREFIX)) {
+      try { favs[k] = JSON.parse(localStorage.getItem(k)); } catch(e) {}
+    }
+  }
+  return favs;
+}
+
+function isFavourited(url) {
+  return localStorage.getItem(favKey(url)) !== null;
+}
+
+function toggleFavourite(ev) {
+  const k = favKey(ev.url);
+  if (localStorage.getItem(k)) {
+    localStorage.removeItem(k);
+  } else {
+    localStorage.setItem(k, JSON.stringify({
+      saved_at: new Date().toISOString(),
+      event: ev
+    }));
+  }
+  updateFavCount();
+}
+
+function updateFavCount() {
+  const count = Object.keys(getFavourites()).length;
+  document.getElementById("fav-count").textContent = count;
+  const btn = document.getElementById("fav-toggle-btn");
+  if (count > 0) {
+    btn.style.borderColor = "#b45309";
+    btn.style.color = "#b45309";
+    btn.style.background = "#b4530918";
+  } else {
+    btn.style.borderColor = "#3a3020";
+    btn.style.color = "#6b5a3a";
+    btn.style.background = "transparent";
+  }
+}
+
+function toggleFavView() {
+  showingFavs = !showingFavs;
+  const favView = document.getElementById("fav-view");
+  const filterSection = document.getElementById("cat-filter-section");
+  const areaSection = document.getElementById("area-filter-section");
+  const eventsContainer = document.getElementById("events-container");
+  const btn = document.getElementById("fav-toggle-btn");
+
+  if (showingFavs) {
+    favView.classList.remove("hidden");
+    filterSection.style.display = "none";
+    areaSection.style.display = "none";
+    eventsContainer.style.display = "none";
+    btn.style.borderColor = "#b45309";
+    btn.style.color = "#b45309";
+    btn.style.background = "#b4530928";
+    renderFavourites();
+  } else {
+    favView.classList.add("hidden");
+    filterSection.style.display = "";
+    areaSection.style.display = "";
+    eventsContainer.style.display = "";
+    btn.style.borderColor = "#3a3020";
+    btn.style.color = "#6b5a3a";
+    btn.style.background = "transparent";
+    updateFavCount();
+  }
+}
+
+function renderFavourites() {
+  const container = document.getElementById("fav-events-container");
+  container.innerHTML = "";
+
+  const favs = getFavourites();
+  const favList = Object.values(favs).sort((a,b) =>
+    new Date(b.saved_at) - new Date(a.saved_at));
+
+  if (favList.length === 0) {
+    const p = document.createElement("p");
+    p.className = "no-events";
+    p.textContent = "No favourites yet — click the ☆ on any event card to save it.";
+    container.appendChild(p);
+    return;
+  }
+
+  // Split into current (in this week's digest) and past
+  const currentUrls = new Set(
+    (currentData?.categories || []).flatMap(c => (c.events||[]).map(e => e.url).filter(Boolean))
+  );
+
+  const current = favList.filter(f => f.event?.url && currentUrls.has(f.event.url));
+  const past    = favList.filter(f => !f.event?.url || !currentUrls.has(f.event.url));
+
+  if (current.length > 0) {
+    const label = document.createElement("div");
+    label.className = "fav-section-label";
+    label.textContent = "This week (" + current.length + ")";
+    container.appendChild(label);
+    const grid = document.createElement("div");
+    grid.className = "events-grid";
+    current.forEach(f => grid.appendChild(buildEventCard(f.event, true)));
+    container.appendChild(grid);
+  }
+
+  if (past.length > 0) {
+    const label = document.createElement("div");
+    label.className = "fav-section-label";
+    label.textContent = "Past favourites (" + past.length + ")";
+    container.appendChild(label);
+    const grid = document.createElement("div");
+    grid.className = "events-grid";
+    past.forEach(f => {
+      const card = buildEventCard(f.event, true);
+      card.classList.add("fav-past-card");
+      const badge = document.createElement("div");
+      badge.className = "fav-past-badge";
+      badge.textContent = "Not in current digest";
+      card.insertBefore(badge, card.firstChild);
+      grid.appendChild(card);
+    });
+    container.appendChild(grid);
+  }
+}
+
+function makeFavBtn(ev) {
+  const btn = document.createElement("button");
+  btn.className = "fav-btn" + (isFavourited(ev.url) ? " active" : "");
+  btn.textContent = isFavourited(ev.url) ? "★" : "☆";
+  btn.title = "Favourite";
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFavourite(ev);
+    btn.classList.toggle("active");
+    btn.textContent = btn.classList.contains("active") ? "★" : "☆";
+    if (showingFavs) renderFavourites();
+  });
+  return btn;
+}
+
+function buildEventCard(ev, isFav) {
+  const color = COLORS[ev._cat || ev.category] || "#9a8060";
+  const icon  = ICONS[ev._cat || ev.category]  || "◇";
+  const card = document.createElement("div");
+  card.className = "event-card" + (ev.in_demand ? " in-demand" : "");
+
+  if (ev.in_demand) {
+    const badge = document.createElement("div");
+    badge.className = "in-demand-badge";
+    badge.textContent = "🔥 In Demand";
+    card.appendChild(badge);
+  }
+
+  // Fav button (only if event has a URL)
+  if (ev.url) card.appendChild(makeFavBtn(ev));
+
+  const catLabel = document.createElement("div");
+  catLabel.className = "event-cat-label";
+  catLabel.style.color = color;
+  catLabel.textContent = icon + " " + (ev._cat || ev.category);
+  card.appendChild(catLabel);
+
+  const titleEl = ev.url
+    ? (() => { const a = document.createElement("a"); a.className = "event-title-link"; a.href = ev.url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = ev.title || ""; return a; })()
+    : (() => { const d = document.createElement("div"); d.className = "event-title"; d.textContent = ev.title || ""; return d; })();
+  card.appendChild(titleEl);
+
+  const meta = document.createElement("div");
+  meta.className = "event-meta";
+  if (ev.venue) meta.innerHTML += "📍 " + ev.venue + (ev.area ? " · " + ev.area : "") + " ";
+  const dateDisplay = ev.timing || (ev.date_iso ? ev.date_iso : null);
+  if (dateDisplay) meta.innerHTML += "🕐 " + dateDisplay + " ";
+  if (ev.price) meta.innerHTML += "₹ " + ev.price;
+  card.appendChild(meta);
+
+  if (ev.recurrence) {
+    const badge = document.createElement("div");
+    badge.className = "recurrence-badge " + ev.recurrence;
+    badge.textContent = ev.recurrence === "one-time" ? "⊙ One-time" : "↺ Recurring";
+    card.appendChild(badge);
+  }
+  if (ev.why) {
+    const why = document.createElement("div");
+    why.className = "event-why";
+    why.textContent = ev.why;
+    card.appendChild(why);
+  }
+  return card;
+}
+
 function renderEvents() {
   const container = document.getElementById("events-container");
   container.innerHTML = "";
@@ -997,71 +1241,7 @@ function renderEvents() {
 
   const grid = document.createElement("div");
   grid.className = "events-grid";
-
-  events.forEach(ev => {
-    const color = COLORS[ev._cat] || "#9a8060";
-    const icon  = ICONS[ev._cat]  || "◇";
-
-    const card = document.createElement("div");
-    card.className = "event-card" + (ev.in_demand ? " in-demand" : "");
-
-    if (ev.in_demand) {
-      const badge = document.createElement("div");
-      badge.className = "in-demand-badge";
-      badge.textContent = "🔥 In Demand";
-      card.appendChild(badge);
-    }
-
-    const catLabel = document.createElement("div");
-    catLabel.className = "event-cat-label";
-    catLabel.style.color = color;
-    catLabel.textContent = icon + " " + ev._cat;
-    card.appendChild(catLabel);
-
-    const titleEl = ev.url
-      ? (() => {
-          const a = document.createElement("a");
-          a.className = "event-title event-title-link";
-          a.textContent = ev.title || "";
-          a.href = ev.url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          return a;
-        })()
-      : (() => {
-          const d = document.createElement("div");
-          d.className = "event-title";
-          d.textContent = ev.title || "";
-          return d;
-        })();
-    card.appendChild(titleEl);
-
-    const meta = document.createElement("div");
-    meta.className = "event-meta";
-    if (ev.venue)  meta.innerHTML += `<span style="color:#9a8060">📍 ${ev.venue}${ev.area ? " · " + ev.area : ""}</span>`;
-    // Show timing if available, fall back to date_iso, show both if timing lacks the date
-    const dateDisplay = ev.timing || (ev.date_iso ? ev.date_iso : null);
-    if (dateDisplay) meta.innerHTML += `<span style="color:#6b8a6b">🕐 ${dateDisplay}</span>`;
-    if (ev.price)  meta.innerHTML += `<span style="color:#b45309">₹ ${ev.price}</span>`;
-    card.appendChild(meta);
-
-    if (ev.recurrence) {
-      const badge = document.createElement("div");
-      badge.className = "recurrence-badge " + ev.recurrence;
-      badge.textContent = ev.recurrence === "one-time" ? "⬡ One-time" : "↺ Recurring";
-      card.appendChild(badge);
-    }
-
-    if (ev.why) {
-      const why = document.createElement("div");
-      why.className = "event-why";
-      why.textContent = ev.why;
-      card.appendChild(why);
-    }
-
-    grid.appendChild(card);
-  });
-
+  events.forEach(ev => grid.appendChild(buildEventCard(ev, false)));
   container.appendChild(grid);
 }
 
