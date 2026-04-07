@@ -28,6 +28,11 @@ SCRAPE_INPUT_FILE  = "scrape_latest.json"
 DIGEST_LATEST_JSON = "digest_latest.json"
 DIGEST_LATEST_MD   = "digest_latest.md"
 DIGEST_ARCHIVE_DIR = "digests"
+CURATOR_LOG_FILE   = "curator_log.json"
+
+# Anthropic Sonnet pricing (per million tokens)
+COST_PER_M_INPUT  = 3.00
+COST_PER_M_OUTPUT = 15.00
 
 BMS_CATEGORIES = ["movies", "events", "plays", "sports", "activities"]
 
@@ -204,6 +209,7 @@ Your response must start with [ and contain nothing else."""
         start = split_at + 1
 
     all_events = []
+    batch_logs = []
     overall_status = "clean"
     for batch_num, chunk in enumerate(chunks, 1):
         if len(chunks) > 1:
@@ -231,7 +237,15 @@ Your response must start with [ and contain nothing else."""
             for text_chunk in stream.text_stream:
                 full_text += text_chunk
             usage = stream.get_final_message().usage
-            print(f" [in={usage.input_tokens} out={usage.output_tokens} max={max_tok}]", end="", flush=True)
+            in_tok  = usage.input_tokens
+            out_tok = usage.output_tokens
+            print(f" [in={in_tok} out={out_tok} max={max_tok}]", end="", flush=True)
+            batch_logs.append({
+                "batch": batch_num,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+                "cost_usd": round((in_tok/1_000_000)*COST_PER_M_INPUT + (out_tok/1_000_000)*COST_PER_M_OUTPUT, 4),
+            })
         batch_events, batch_status = _parse_array_response(full_text, f"{cat_name}[batch {batch_num}]")
         all_events.extend(batch_events)
         if batch_status != "clean":
@@ -244,7 +258,7 @@ Your response must start with [ and contain nothing else."""
     for ev in events:
         if not ev.get("category"):
             ev["category"] = cat_name.capitalize()
-    return _match_urls(events, url_map), status
+    return _match_urls(events, url_map), status, batch_logs
 
 
 # ── Top pick + curator note ────────────────────────────────────────────────────
@@ -408,6 +422,35 @@ def remap() -> dict:
     print(f"[Curator] Saved  : {path}")
     print(f"[Curator] Latest : {DIGEST_LATEST_JSON}")
     print(f"[Curator] Total  : {total_events} events across {len(all_categories)} categories")
+
+    # Finalise and save run log
+    cat_logs = run_log["categories"]
+    total_input  = sum(c.get("input_tokens",  0) for c in cat_logs.values())
+    total_output = sum(c.get("output_tokens", 0) for c in cat_logs.values())
+    total_cost   = sum(c.get("cost_usd",      0) for c in cat_logs.values())
+    run_log["totals"] = {
+        "total_events":        total_events,
+        "categories_curated":  len([c for c in cat_logs.values() if c.get("batches", 0) > 0]),
+        "categories_cached":   len([c for c in cat_logs.values() if c.get("batches", 0) == 0]),
+        "input_tokens":        total_input,
+        "output_tokens":       total_output,
+        "cost_usd":            round(total_cost, 4),
+        "cost_inr":            round(total_cost * 84, 2),
+    }
+    logs = []
+    if os.path.exists(CURATOR_LOG_FILE):
+        try:
+            with open(CURATOR_LOG_FILE, encoding="utf-8") as f:
+                logs = json.load(f)
+        except Exception:
+            logs = []
+    logs.append(run_log)
+    with open(CURATOR_LOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(logs, f, ensure_ascii=False, indent=2)
+    print(f"[Curator] Log    : {CURATOR_LOG_FILE}")
+    print(f"[Curator] Cost   : ${total_cost:.4f}  (\u20b9{run_log['totals']['cost_inr']:.2f})"
+          f"  [in={total_input:,} out={total_output:,}]")
+
     return data
 
 
@@ -443,6 +486,15 @@ def run(categories: list[str] | None = None, dry_run: bool = False,
         return {}
 
     client = _get_client()
+
+    run_log = {
+        "run_at": datetime.now(timezone.utc).isoformat(),
+        "scraped_at": scraped_at,
+        "window": {"from": window_start.isoformat(), "to": window_end.isoformat()},
+        "categories": {},
+        "totals": {},
+    }
+
     # Collect ALL category results — both cached and freshly curated
     all_cat_results: dict[str, list] = {}  # {cat_name: [events]}
 
@@ -473,7 +525,7 @@ def run(categories: list[str] | None = None, dry_run: bool = False,
         # Need to curate
         print(f"[Curator] Curate : {cat}…", end=" ", flush=True)
         try:
-            events, status = curate_category(
+            events, status, blogs = curate_category(
                 cat, cat_data["text"], cat_data["url_map"],
                 window_start, window_end, client
             )
@@ -485,6 +537,15 @@ def run(categories: list[str] | None = None, dry_run: bool = False,
             # will be retried automatically on next run
             scrape["categories"][cat]["curated_events"]    = events
             scrape["categories"][cat]["curation_salvaged"] = (status != "clean")
+            run_log["categories"][cat] = {
+                "events": len(events),
+                "status": status,
+                "batches": len(blogs),
+                "input_tokens":  sum(b["input_tokens"]  for b in blogs),
+                "output_tokens": sum(b["output_tokens"] for b in blogs),
+                "cost_usd":      round(sum(b["cost_usd"] for b in blogs), 4),
+                "batch_detail":  blogs,
+            }
         except Exception as e:
             print(f"FAILED ({e})")
             # Mark as salvaged so next run retries it
