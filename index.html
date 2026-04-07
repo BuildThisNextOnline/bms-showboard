@@ -17,7 +17,7 @@
   /* ── Masthead ── */
   .masthead {
     border-bottom: 3px double #3a3020;
-    padding: 28px 40px 20px;
+    padding: 28px 60px 20px;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     background: linear-gradient(180deg, #111008 0%, #0d0c0a 100%);
   }
@@ -44,8 +44,8 @@
 
   /* ── Body ── */
   .body {
-    padding: 32px 40px;
-    max-width: 900px;
+    padding: 32px 60px;
+    max-width: 1400px;
     margin: 0 auto;
   }
 
@@ -148,9 +148,9 @@
   /* ── Stats ── */
   .stats-row {
     display: flex; gap: 24px; flex-wrap: wrap;
-    margin-bottom: 28px;
+    margin-bottom: 20px;
     border-top: 1px solid #2a2318; border-bottom: 1px solid #2a2318;
-    padding: 12px 0;
+    padding: 10px 0;
   }
   .stat { display: flex; flex-direction: column; gap: 2px; }
   .stat-val { font-size: 22px; color: #b45309; font-weight: bold; }
@@ -168,7 +168,7 @@
   }
 
   /* ── Category toggles ── */
-  .cat-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .cat-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .cat-toggle {
     padding: 5px 14px;
     border: 1px solid #3a3020;
@@ -186,7 +186,7 @@
   /* ── Events Grid ── */
   .events-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 16px;
   }
   .event-card {
@@ -450,20 +450,16 @@ let showingFavs = false;
     new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" }) +
     " · Week " + windowStart + " → " + windowEnd + " · Powered by Claude";
 
-  // Auto-fetch digest_latest.json from same origin (works on GitHub Pages)
-  // Falls back silently to manual upload if not found (local use)
-  if (location.protocol !== "file:") {
-    fetch("digest_latest.json?t=" + Date.now())
-      .then(r => { if (!r.ok) throw new Error("not found"); return r.text(); })
-      .then(text => {
-        parseAndRender(text, "digest_latest.json");
-        // Hide the input section since data loaded automatically
-        document.getElementById("input-section").classList.add("hidden");
-      })
-      .catch(() => {
-        // No auto-load — show upload UI as normal
-      });
-  }
+  // Auto-fetch digest_latest.json — works on GitHub Pages and local file:// in Chrome
+  fetch("digest_latest.json?t=" + Date.now())
+    .then(r => { if (!r.ok) throw new Error("not found"); return r.text(); })
+    .then(text => {
+      parseAndRender(text, "digest_latest.json");
+      document.getElementById("input-section").classList.add("hidden");
+    })
+    .catch(() => {
+      // No auto-load — show upload UI as normal
+    });
 
   // File input
   const fileInput = document.getElementById("file-input");
